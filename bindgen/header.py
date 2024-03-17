@@ -599,17 +599,17 @@ class ClassInfo(object):
         for el in cur.get_children() :
             if el.kind == CursorKind.TYPEDEF_DECL:
                 self.typedefs.append(TypedefInfo(el))
-        self.typedef_dict = {t.name : self.name for t in self.typedefs}
+        self.typedef_dict = {t.name : t for t in self.typedefs}
 
-        self.innerclasses = {}
+        self.innerclass_dict = {}
         for el in cur.get_children() :
             if el.kind == CursorKind.CLASS_DECL or el.kind == CursorKind.STRUCT_DECL:
                 ci = ClassInfo(el)
-                if ci.name in self.innerclasses:
-                    self.innerclasses[ci.name].extend_defintion(ci)
+                if ci.name in self.innerclass_dict:
+                    self.innerclass_dict[ci.name].extend_defintion(ci)
                 else:
-                    self.innerclasses[ci.name] = ci
-        self.innerclass_dict = {k : self.name for k in self.innerclasses}
+                    self.innerclass_dict[ci.name] = ci
+        self.innerclasses = list(self.innerclass_dict.values())
 
         # qualify the arguments/return types of methods when referring to inner member types
         def _innertypes_qualification(clsname, innertypes_dict, typ):
