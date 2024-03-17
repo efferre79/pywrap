@@ -593,6 +593,8 @@ class ClassInfo(object):
         self.static_methods_dict = {m.full_name:m for m in self.static_methods}
 
         # collect also all inner member types (typedef and classes)
+        self.enum_dict = {e.name : e for e in self.enums}
+
         self.typedefs = []
         for el in cur.get_children() :
             if el.kind == CursorKind.TYPEDEF_DECL:
@@ -622,8 +624,10 @@ class ClassInfo(object):
                 for ai in range(0,len(m_dict[m].args)):
                     m_dict[m].args[ai] = tuple(map(lambda p: _innertypes_qualification(self.name, self.innerclass_dict, p), m_dict[m].args[ai]))
                     m_dict[m].args[ai] = tuple(map(lambda p: _innertypes_qualification(self.name, self.typedef_dict, p), m_dict[m].args[ai]))
+                    m_dict[m].args[ai] = tuple(map(lambda p: _innertypes_qualification(self.name, self.enum_dict, p), m_dict[m].args[ai]))
                 m_dict[m].return_type = _innertypes_qualification(self.name, self.innerclass_dict, m_dict[m].return_type)
                 m_dict[m].return_type = _innertypes_qualification(self.name, self.typedef_dict, m_dict[m].return_type)
+                m_dict[m].return_type = _innertypes_qualification(self.name, self.enum_dict, m_dict[m].return_type)
 
         _methods_qualification(self.methods_dict)
         _methods_qualification(self.static_methods_dict)
