@@ -46,7 +46,7 @@ void register_template_{{t.name}}(py::object &m, const char *name){
     {% for con in t.constructors %}
         .def(py::init< {{ argtypes(con) }} >() {{argnames_template(t, con)}} )
     {% endfor %}
-    {% for m in t.methods if not references_inner(t.name,m)%}
+    {% for m in t.methods %}
         .def("{{m.name}}",
              {{ template_method_pointer(t,m) }},
              R"#({{m.comment}})#" {{argnames_template(t, m)}})
@@ -66,26 +66,27 @@ void register_template_{{t.name}}(py::object &m, const char *name){
     {% endfor %}
     {% endif %}
     {% endfor %}
-    {% if "begin" in t.methods_dict and "end" in t.methods_dict %}
+    {% set method_names = [] %}{% for mn in t.methods_dict.keys() %}{% do method_names.append( t.methods_dict[mn].name ) %}{% endfor %}
+    {% if "begin" in method_names and "end" in method_names %}
         .def("__iter__",[](const {{t.name}}{{template_args(t)}} &self)
              { return py::make_iterator<py::return_value_policy::copy>(self.begin(), self.end()); },
              py::keep_alive<0, 1>())
-    {% elif "cbegin" in t.methods_dict and "cend" in t.methods_dict %}
+    {% elif "cbegin" in method_names and "cend" in method_names %}
         .def("__iter__",[](const {{t.name}}{{template_args(t)}} &self)
              { return py::make_iterator<py::return_value_policy::copy>(self.cbegin(), self.cend()); },
              py::keep_alive<0, 1>())
     {% endif %}
-    {% if "Extent" in t.methods_dict %}
+    {% if "Extent" in method_names %}
         .def("__len__",[](const {{t.name}}{{template_args(t)}} &self)
              { return self.Extent(); }
              )
     {% endif %}
-    {% if "Size" in t.methods_dict %}
+    {% if "Size" in method_names %}
         .def("__len__",[](const {{t.name}}{{template_args(t)}} &self)
              { return self.Size(); }
              )
     {% endif %}
-    {% if "IsEmpty" in t.methods_dict %}
+    {% if "IsEmpty" in method_names %}
         .def("__bool__",[](const {{t.name}}{{template_args(t)}} &self)
              { return self.IsEmpty(); }
              )

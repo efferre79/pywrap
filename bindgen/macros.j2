@@ -68,7 +68,7 @@
 
 {%- macro arg_type_with_template_params(template, t) -%}
     {%- set ns = namespace(t=t) -%}
-    {%- if t.startswith(template.name+'::') -%}
+    {%- if t.find(template.name+'::') >= 0 -%}
         {% set ns.t = 'typename ' + template.name + '<' +  template.type_params|map('get',1)|join(', ') + '>' + t.split(template.name)[-1] %}
     {%- endif -%}
     {{ ns.t }}
@@ -105,7 +105,7 @@
 {%- endmacro -%}
 
 {%- macro template_return_type(cls,f) -%}
-    {% if f.return_type.startswith(cls.name+'::') %}typename {{cls.name}}{{ template_args(cls) }}::{{ f.return_type.split('::')[1]}}{% else %}{{f.return_type}}{% endif %}
+    {% if f.return_type.find(cls.name+'::') >= 0 %}typename {{cls.name}}{{ template_args(cls) }}::{{ f.return_type.split('::')[1]}}{% else %}{{f.return_type}}{% endif %}
 {%- endmacro -%}
 
 {%- macro template_method_pointer(cls,f) -%}
@@ -138,7 +138,8 @@
 
         {% for super in c.superclasses %}
         {% set p = all_classes.get(super,None) %}{% if p %}
-        {% for m in p.methods %}{% if m.pure_virtual and m.name not in c.methods_dict and not m.full_name in methods %}
+        {% set method_names = [] %}{% for mn in c.methods_dict.keys() %}{% do method_names.append( c.methods_dict[mn].name ) %}{% endfor %}
+        {% for m in p.methods %}{% if m.pure_virtual and m.name not in method_names and not m.full_name in methods %}
         {{ prototype(m) }} override { {{pybind_overload(p,m)}} };
         {% do methods.append(m.full_name) %}
         {% endif %}{% endfor %}
@@ -153,7 +154,8 @@
 
         {% for super in c.superclasses %}
         {% set p = all_classes.get(super,None) %}{% if p %}
-        {% for m in p.protected_virtual_methods %}{% if m.name not in c.protected_virtual_methods_dict and not m.full_name in methods %}
+        {% set protected_virtual_method_names = [] %}{% for mn in c.protected_virtual_methods_dict.keys() %}{% do protected_virtual_method_names.append( c.protected_virtual_methods_dict[mn].name ) %}{% endfor %}
+        {% for m in p.protected_virtual_methods %}{% if m.name not in c.protected_virtual_method_names and not m.full_name in methods %}
         {{ prototype(m) }} override { {{pybind_overload(p,m)}} };
         {% do methods.append(m.full_name) %}
         {% endif %}{% endfor %}
@@ -167,7 +169,8 @@
 
         {% for super in c.superclasses %}
         {% set p = all_classes.get(super,None) %}{% if p %}
-        {% for m in p.private_virtual_methods %}{% if m.name not in c.private_virtual_methods_dict and not m.full_name in methods %}
+        {% set private_virtual_method_names = [] %}{% for mn in c.private_virtual_methods_dict.keys() %}{% do private_virtual_method_names.append( c.private_virtual_methods_dict[mn].name ) %}{% endfor %}
+        {% for m in p.private_virtual_methods %}{% if m.name not in c.private_virtual_method_names and not m.full_name in methods %}
         {{ prototype(m) }} override { {{pybind_overload(p,m)}} };
         {% do methods.append(m.full_name) %}
         {% endif %}{% endfor %}

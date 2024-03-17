@@ -8,6 +8,8 @@ from .type_parser import parse_type
 from .translation_unit import parse_tu
 from .utils import current_platform
 
+import re
+
 def paths_approximately_equal(p1 : str, p2 : str):
     '''Approximate path equality. This is due to
     '''
@@ -485,6 +487,27 @@ class DestructorInfo(FunctionInfo):
 
     pass
 
+class TypedefInfo(BaseInfo):
+
+    type : str
+    pod : bool
+    template_base : List[str]
+    template_args : List[str]
+
+    def __init__(self,cur):
+
+        super(TypedefInfo,self).__init__(cur)
+
+        t = cur.underlying_typedef_type
+
+        self.type = t.spelling
+        self.pod = t.is_pod()
+
+        if not self.pod:
+            self.template_base = [ch.spelling for ch in cur.get_children() if ch.kind == CursorKind.TEMPLATE_REF]
+            self.template_args = [ch.spelling for ch in cur.get_children() if ch.kind == CursorKind.TYPE_REF]
+
+
 class ClassInfo(object):
     '''Container for class parsing results
     '''
@@ -524,9 +547,13 @@ class ClassInfo(object):
     protected_virtual_methods_dict : Mapping[str,MethodInfo]
     private_virtual_methods_dict : Mapping[str,MethodInfo]
 
+    typedefs : List[TypedefInfo]
+    typedef_dict : Mapping[str,str]
+
     def __init__(self,cur):
 
-        self.name = cur.type.spelling
+        if not isinstance(self, ClassTemplateInfo) :
+            self.name = cur.type.spelling
         self.comment = cur.brief_comment
         self.abstract = cur.is_abstract_record()
 
@@ -559,9 +586,47 @@ class ClassInfo(object):
         self.rootclass = []
         self.superclasses = []
 
-        self.methods_dict = {m.name:m for m in self.methods}
-        self.protected_virtual_methods_dict = {m.name:m for m in self.protected_virtual_methods}
-        self.private_virtual_methods_dict = {m.name:m for m in self.private_virtual_methods}
+        self.methods_dict = {m.full_name:m for m in self.methods}
+        self.protected_virtual_methods_dict = {m.full_name:m for m in self.protected_virtual_methods}
+        self.private_virtual_methods_dict = {m.full_name:m for m in self.private_virtual_methods}
+
+        self.static_methods_dict = {m.full_name:m for m in self.static_methods}
+
+        # collect also all inner member types (typedef and classes)
+        self.typedefs = []
+        for el in cur.get_children() :
+            if el.kind == CursorKind.TYPEDEF_DECL:
+                self.typedefs.append(TypedefInfo(el))
+        self.typedef_dict = {t.name : self.name for t in self.typedefs}
+
+        self.innerclasses = {}
+        for el in cur.get_children() :
+            if el.kind == CursorKind.CLASS_DECL or el.kind == CursorKind.STRUCT_DECL:
+                ci = ClassInfo(el)
+                if ci.name in self.innerclasses:
+                    self.innerclasses[ci.name].extend_defintion(ci)
+                else:
+                    self.innerclasses[ci.name] = ci
+        self.innerclass_dict = {k : self.name for k in self.innerclasses}
+
+        # qualify the arguments/return types of methods when referring to inner member types
+        def _innertypes_qualification(clsname, innertypes_dict, typ):
+            for i in innertypes_dict.keys():
+                if typ:
+                    unqual_name = i.split("::")[-1]
+                    if re.search(r"\b%s\b" % unqual_name, typ) :
+                        typ = typ.replace(unqual_name, clsname + "::" + unqual_name)
+            return typ
+        def _methods_qualification(m_dict) :
+            for m in m_dict:
+                for ai in range(0,len(m_dict[m].args)):
+                    m_dict[m].args[ai] = tuple(map(lambda p: _innertypes_qualification(self.name, self.innerclass_dict, p), m_dict[m].args[ai]))
+                    m_dict[m].args[ai] = tuple(map(lambda p: _innertypes_qualification(self.name, self.typedef_dict, p), m_dict[m].args[ai]))
+                m_dict[m].return_type = _innertypes_qualification(self.name, self.innerclass_dict, m_dict[m].return_type)
+                m_dict[m].return_type = _innertypes_qualification(self.name, self.typedef_dict, m_dict[m].return_type)
+
+        _methods_qualification(self.methods_dict)
+        _methods_qualification(self.static_methods_dict)
 
     def filter_rvalues(self,funcs):
 
@@ -600,31 +665,11 @@ class ClassTemplateInfo(ClassInfo):
 
     def __init__(self,cur):
 
-         super(ClassTemplateInfo,self).__init__(cur)
          self.name = cur.spelling
          self.type_params = [(None if el.spelling == el.type.spelling else el.type.spelling,
                               el.spelling,
                               default) for el,default in get_template_type_params(cur)]
-
-class TypedefInfo(BaseInfo):
-  
-    type : str
-    pod : bool
-    template_base : List[str]
-    template_args : List[str]
-
-    def __init__(self,cur):
-
-        super(TypedefInfo,self).__init__(cur)
-
-        t = cur.underlying_typedef_type
-
-        self.type = t.spelling
-        self.pod = t.is_pod()
-
-        if not self.pod:
-            self.template_base = [ch.spelling for ch in cur.get_children() if ch.kind == CursorKind.TEMPLATE_REF]
-            self.template_args = [ch.spelling for ch in cur.get_children() if ch.kind == CursorKind.TYPE_REF]
+         super(ClassTemplateInfo,self).__init__(cur)
 
 class ForwardInfo(BaseInfo):
 
