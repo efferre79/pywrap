@@ -548,7 +548,7 @@ class ClassInfo(object):
     private_virtual_methods_dict : Mapping[str,MethodInfo]
 
     typedefs : List[TypedefInfo]
-    typedef_dict : Mapping[str,str]
+    typedef_dict : Mapping[str,TypedefInfo]
 
     def __init__(self,cur):
 
@@ -658,7 +658,7 @@ class ClassInfo(object):
 
         self.methods_dict = {**self.methods_dict,**other.methods_dict}
         self.protected_virtual_methods_dict = {**self.protected_virtual_methods_dict,**other.protected_virtual_methods_dict}
-        self.private_virtual_methods_dict = {**self.protected_virtual_methods_dict,**other.protected_virtual_methods_dict}
+        self.private_virtual_methods_dict = {**self.private_virtual_methods_dict,**other.private_virtual_methods_dict}
 
 class ClassTemplateInfo(ClassInfo):
   
