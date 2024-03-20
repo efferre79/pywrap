@@ -652,6 +652,8 @@ class ClassInfo(object):
         self.static_operators += other.static_operators
         self.destructors += other.destructors
         self.nonpublic_destructors +=  other.nonpublic_destructors
+        self.innerclasses += other.innerclasses
+        self.typedefs += other.typedefs
         
         self.fields += other.fields
         self.enums += other.enums
@@ -659,6 +661,10 @@ class ClassInfo(object):
         self.methods_dict = {**self.methods_dict,**other.methods_dict}
         self.protected_virtual_methods_dict = {**self.protected_virtual_methods_dict,**other.protected_virtual_methods_dict}
         self.private_virtual_methods_dict = {**self.private_virtual_methods_dict,**other.private_virtual_methods_dict}
+        self.static_methods_dict = {**self.static_methods_dict,**other.static_methods_dict}
+        self.innerclass_dict = {**self.innerclass_dict,**other.innerclass_dict}
+        self.typedef_dict = {**self.typedef_dict,**other.typedef_dict}
+        self.enum_dict = {**self.enum_dict,**other.enum_dict}
 
 class ClassTemplateInfo(ClassInfo):
   
