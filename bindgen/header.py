@@ -8,8 +8,6 @@ from .type_parser import parse_type
 from .translation_unit import parse_tu
 from .utils import current_platform
 
-import re
-
 def paths_approximately_equal(p1 : str, p2 : str):
     '''Approximate path equality. This is due to
     '''
@@ -610,24 +608,6 @@ class ClassInfo(object):
                 else:
                     self.innerclass_dict[ci.name] = ci
         self.innerclasses = list(self.innerclass_dict.values())
-
-        # qualify the arguments/return types of methods when referring to inner member types
-        def _innertypes_qualification(clsname, innertypes_dict, typ):
-            for i in innertypes_dict.keys():
-                if typ:
-                    unqual_name = i.split("::")[-1]
-                    if re.search(r"\b%s\b" % unqual_name, typ) :
-                        typ = typ.replace(unqual_name, clsname + "::" + unqual_name)
-            return typ
-        def _methods_qualification(klass, m_dict) :
-            for m in m_dict:
-                types = { **klass.innerclass_dict, **klass.typedef_dict, **klass.enum_dict }
-                for ai in range(0,len(m_dict[m].args)):
-                    m_dict[m].args[ai] = tuple(map(lambda p: _innertypes_qualification(klass.name, types, p), m_dict[m].args[ai]))
-                m_dict[m].return_type = _innertypes_qualification(klass.name, types, m_dict[m].return_type)
-
-        _methods_qualification(self, self.methods_dict)
-        _methods_qualification(self, self.static_methods_dict)
 
     def filter_rvalues(self,funcs):
 

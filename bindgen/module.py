@@ -6,6 +6,8 @@ from toposort import toposort_flatten
 
 from path import Path
 
+import re
+
 class ModuleInfo(object):
     '''Container for the whole module
     '''
@@ -79,7 +81,56 @@ class ModuleInfo(object):
         self.dependencies_headers = dependencies_clean - {self.name}
         
         self.sort_classes()
+
+        # qualify the arguments/return types of methods when referring to inner member types
+        def _innertypes_qualification(clsname, innertypes_dict, typ, template_params):
+            if not typ :
+                return typ
+            for tp in template_params:
+                if re.search(r"\b%s\b" % tp, typ) :
+                    return typ
+            for i in innertypes_dict.keys():
+                i_unqual = i.split("::")[-1]
+                m = re.search(r"\b%s\b" % i_unqual, typ)
+                # skip already qualified types
+                if m and m.start()>0 and typ[m.start()-1] == ":":
+                    continue
+                elif m :
+                    typ = typ.replace(i_unqual, clsname + "::" + i_unqual)
+            return typ
+        def _methods_qualification(klass, m_dict, template_params) :
+            # the key of methods dict contain the original signature, only the pointed MethodInfo class is updated
+            for m in m_dict:
+                enum_dict_filtered = { e.name : e for e in klass.enums if not e.anonymous }
+
+                types = { **klass.innerclass_dict, **klass.typedef_dict, **enum_dict_filtered }
+                for ai in range(0,len(m_dict[m].args)):
+                    m_dict[m].args[ai]= ( m_dict[m].args[ai][0], _innertypes_qualification(klass.name, types, m_dict[m].args[ai][1], template_params), m_dict[m].args[ai][2] )
+                m_dict[m].return_type = _innertypes_qualification(klass.name, types, m_dict[m].return_type, template_params)
+
+        for k in self.classes + self.class_templates :
+            if isinstance(k, ClassTemplateInfo) :
+                template_params = tuple(map(lambda t : t[1], k.type_params))
+            else:
+                template_params = tuple()
+
+            # first on the class itself to give precedence to its own innertypes
+            _methods_qualification(k, k.methods_dict, template_params)
+            _methods_qualification(k, k.static_methods_dict, template_params)
         
+            constructors_dict = {c.full_name : c for c in k.constructors}
+            _methods_qualification(k, constructors_dict, template_params)
+
+            # and then on all the others
+            for k2 in self.classes + self.class_templates :
+                if k.name == k2.name :
+                    continue
+                _methods_qualification(k2, k.methods_dict, template_params)
+                _methods_qualification(k2, k.static_methods_dict, template_params)
+
+                constructors_dict = {c.full_name : c for c in k.constructors}
+                _methods_qualification(k2, constructors_dict, template_params)
+
     def sort_classes(self):
         
         class_dict = {c.name : c for c in self.classes}
