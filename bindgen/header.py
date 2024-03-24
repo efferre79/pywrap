@@ -21,34 +21,35 @@ def is_public(el):
 def get_symbols(tu,
                 kind,
                 ignore_forwards=True,
-                search_in = (CursorKind.NAMESPACE,)):
+                search_in = (CursorKind.NAMESPACE,),
+                only_local = True):
     '''
-    Symbols defined locally (i.e. without includes) and are not forward declarations
-    Search_in allows to explore nested entities as well.
+    Get all the symbols of a kind in a translation unit. The symbols can be defined locally (i.e. without includes) with only_local True,
+    and globally otherwise. Forward declarations can be ignored. Search_in allows to explore nested entities as well.
     
     '''
     tu_path = tu.path
     
-    def _get_symbols(cursor,kind,ignore_forwards):
+    def _get_symbols(cursor,kind,ignore_forwards,only_local):
     
         for child in cursor.get_children():
-            if paths_approximately_equal(Path(child.location.file.name),tu_path) \
+            if ( not only_local or paths_approximately_equal(Path(child.location.file.name),tu_path) ) \
             and child.kind == kind:
                 if ignore_forwards:
-                    if child.get_definition() is None:
+                    if not child.is_definition() :
                         pass #forward declaration
-                    elif not paths_approximately_equal(Path(child.get_definition().location.file.name),tu_path):
+                    elif only_local and not paths_approximately_equal(Path(child.get_definition().location.file.name),tu_path):
                         pass #forward declaration but declared in an include
                     else:
                         yield child #legitimate
                 else:
                     yield child
-            if paths_approximately_equal(Path(child.location.file.name),tu_path) \
+            if ( not only_local or paths_approximately_equal(Path(child.location.file.name),tu_path) ) \
             and child.kind in search_in:
-                for nested in _get_symbols(child,kind,ignore_forwards):
+                for nested in _get_symbols(child,kind,ignore_forwards,only_local):
                     if nested.access_specifier == AccessSpecifier.PUBLIC: yield nested
     
-    for child in _get_symbols(tu.cursor, kind, ignore_forwards):
+    for child in _get_symbols(tu.cursor, kind, ignore_forwards, only_local):
         yield child
 
 def get_forward_declarations(tu):
@@ -104,11 +105,11 @@ def get_operator_templates(tu):
 
     return (f for f in get_symbols(tu,CursorKind.FUNCTION_TEMPLATE,False) if 'operator' in f.spelling)
 
-def get_enums(tu):
-    '''Enums defined locally (i.e. without includes)
+def get_enums(tu, ignore_forwards=True, only_local=True):
+    '''Enums defined locally (i.e. without includes) with only_local True, globally otherwise
     '''
 
-    return get_symbols(tu,CursorKind.ENUM_DECL)
+    return get_symbols(tu,CursorKind.ENUM_DECL,ignore_forwards=ignore_forwards,only_local=only_local)
 
 def get_enum_values(cur):
     '''Gets enum values
@@ -118,24 +119,24 @@ def get_enum_values(cur):
         if child.kind is CursorKind.ENUM_CONSTANT_DECL:
                 yield child
 
-def get_typedefs(tu):
-    '''Typedefs defined locally (i.e. without includes)
+def get_typedefs(tu, ignore_forwards=True, only_local=True):
+    '''Typedefs defined locally (i.e. without includes) with only_local True, globally otherwise
     '''
 
-    return get_symbols(tu,CursorKind.TYPEDEF_DECL)
+    return get_symbols(tu,CursorKind.TYPEDEF_DECL,ignore_forwards=ignore_forwards,only_local=only_local)
 
-def get_classes(tu):
-    '''Classes defined locally (i.e. without includes)
+def get_classes(tu, ignore_forwards=True, only_local=True):
+    '''Classes defined locally (i.e. without includes) with only_local True, globally otherwise
     '''
 
-    return  chain(get_symbols(tu,CursorKind.CLASS_DECL),
-                  get_symbols(tu,CursorKind.STRUCT_DECL))
+    return  chain(get_symbols(tu,CursorKind.CLASS_DECL,ignore_forwards=ignore_forwards,only_local=only_local),
+                  get_symbols(tu,CursorKind.STRUCT_DECL,ignore_forwards=ignore_forwards,only_local=only_local))
 
-def get_class_templates(tu):
-    '''Class templates defined locally (i.e. without includes)
+def get_class_templates(tu, ignore_forwards=True, only_local=True):
+    '''Class templates defined locally (i.e. without includes) with only_local True, globally otherwise
     '''
 
-    return  get_symbols(tu,CursorKind.CLASS_TEMPLATE)
+    return  get_symbols(tu,CursorKind.CLASS_TEMPLATE,ignore_forwards=ignore_forwards,only_local=only_local)
 
 def get_x(cls,kind):
     '''Get children entities of the specified type excluding forward declataions
