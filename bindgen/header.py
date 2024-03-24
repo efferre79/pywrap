@@ -589,11 +589,11 @@ class ClassInfo(object):
         self.rootclass = []
         self.superclasses = []
 
-        self.methods_dict = {m.full_name:m for m in self.methods}
-        self.protected_virtual_methods_dict = {m.full_name:m for m in self.protected_virtual_methods}
-        self.private_virtual_methods_dict = {m.full_name:m for m in self.private_virtual_methods}
+        self.methods_dict = {m.return_type+" "+m.full_name: m for m in self.methods}
+        self.protected_virtual_methods_dict = {m.return_type+" "+m.full_name:m for m in self.protected_virtual_methods}
+        self.private_virtual_methods_dict = {m.return_type+" "+m.full_name:m for m in self.private_virtual_methods}
 
-        self.static_methods_dict = {m.full_name:m for m in self.static_methods}
+        self.static_methods_dict = {m.return_type+" "+m.full_name:m for m in self.static_methods}
 
         # collect also all inner member types (typedef and classes)
         self.enum_dict = {e.name : e for e in self.enums}
