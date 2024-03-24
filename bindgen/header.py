@@ -8,6 +8,8 @@ from .type_parser import parse_type
 from .translation_unit import parse_tu
 from .utils import current_platform
 
+import re
+
 def paths_approximately_equal(p1 : str, p2 : str):
     '''Approximate path equality. This is due to
     '''
@@ -742,25 +744,114 @@ class HeaderInfo(object):
         self.name = path
         self.short_name = path.splitpath()[-1]
         self.dependencies = [el.location.file.name for el in tr_unit.get_includes()]
-        self.enums = [EnumInfo(el) for el in get_enums(tr_unit)]
         self.functions = [FunctionInfo(el) for el in get_functions(tr_unit)]
         self.operators = [FunctionInfo(el) for el in get_operators(tr_unit)]
 
-        self.classes = {}
+        # Let's get also not local-only entities for classes, enums and typedefs because
+        # classes' constructors and methods may require full qualification of the type in the arguments or return value
+        # The non local entities are discared later after the qualification process is over
 
-        for el in get_classes(tr_unit):
+        self.enums = [EnumInfo(el) for el in get_enums(tr_unit, only_local=False)]
+
+        self.typedefs = [TypedefInfo(el) for el in get_typedefs(tr_unit, only_local=False)]
+        self.typedef_dict = {t.name : self.name for t in self.typedefs}
+
+        self.classes = {}
+        for el in get_classes(tr_unit, only_local=False):
             ci = ClassInfo(el)
+            # skip non-local classes which don't have inner interesting entities
+            if len(ci.innerclasses) == 0 and len(ci.enums) == 0 and len(ci.typedefs) == 0 and not paths_approximately_equal(Path(ci.path),tr_unit.path) :
+                continue
             if ci.name in self.classes:
                 self.classes[ci.name].extend_defintion(ci)
             else:
                 self.classes[ci.name] = ci
-
         self.class_dict = {k : self.name for k in self.classes}
-        self.class_templates = {el.displayname:ClassTemplateInfo(el) for el in get_class_templates(tr_unit)}
+
+        self.class_templates = {}
+        for el in get_class_templates(tr_unit, only_local=False) :
+            ci = ClassTemplateInfo(el)
+            # skip non-local classes which don't have inner interesting entities
+            if len(ci.innerclasses) == 0 and len(ci.enums) == 0 and len(ci.typedefs) == 0 and not paths_approximately_equal(Path(ci.path),tr_unit.path) :
+                continue
+            self.class_templates[el.displayname] = ci
         self.class_template_dict = {k: self.name for k in self.class_templates}
-        self.inheritance = {k:v for k,v in get_inheritance_relations(tr_unit) if v}
-        self.typedefs = [TypedefInfo(el) for el in get_typedefs(tr_unit)]
+
+        # let's do full qualification of the arguments/return types for the methods, needed when referring to inner entities
+        # (e.g. inside the class itself or in other external classes such as superclasses)
+
+        def _innertypes_qualification(clsname, innertypes_dict, typ, template_params):
+            if not typ :
+                return typ
+            for tp in template_params:
+                if re.search(r"\b%s\b" % tp, typ) :
+                    return typ
+            for i in innertypes_dict.keys():
+                i_unqual = i.split("::")[-1]
+                m = re.search(r"\b%s\b" % i_unqual, typ)
+                # skip already qualified types
+                if m and m.start()>0 and typ[m.start()-1] == ":":
+                    continue
+                elif m :
+                    typ = typ.replace(i_unqual, clsname + "::" + i_unqual)
+            return typ
+        def _methods_qualification(klass, m_dict, template_params) :
+            # the key of methods dict contains the original signature, only the pointed MethodInfo object is updated here
+            # so it must be recalculated after function call
+            for m in m_dict:
+                enum_dict_filtered = { e.name : e for e in klass.enums if not e.anonymous }
+
+                types = { **klass.innerclass_dict, **klass.typedef_dict, **enum_dict_filtered }
+                for ai in range(0,len(m_dict[m].args)):
+                    m_dict[m].args[ai]= ( m_dict[m].args[ai][0], _innertypes_qualification(klass.name, types, m_dict[m].args[ai][1], template_params), m_dict[m].args[ai][2] )
+                m_dict[m].return_type = _innertypes_qualification(klass.name, types, m_dict[m].return_type, template_params)
+
+        for k in {**self.classes, **self.class_templates}.values() :
+            if isinstance(k, ClassTemplateInfo) :
+                template_params = tuple(map(lambda t : t[1], k.type_params))
+            else:
+                template_params = tuple()
+
+            # first step, do qualification giving precedence to class own innertypes
+            _methods_qualification(k, k.methods_dict, template_params)
+            _methods_qualification(k, k.static_methods_dict, template_params)
+
+            constructors_dict = {c.full_name : c for c in k.constructors}
+            _methods_qualification(k, constructors_dict, template_params)
+
+            # second step, do qualification vs all the others
+            for k2 in {**self.classes, **self.class_templates}.values() :
+                if k.name == k2.name :
+                    continue
+                _methods_qualification(k2, k.methods_dict, template_params)
+                _methods_qualification(k2, k.static_methods_dict, template_params)
+
+                constructors_dict = {c.full_name : c for c in k.constructors}
+                _methods_qualification(k2, constructors_dict, template_params)
+
+            # resync function signature after qualification
+            k.methods_dict = {m.return_type+" "+m.full_name: m for m in k.methods}
+            k.static_methods_dict = {m.return_type+" "+m.full_name: m for m in k.static_methods}
+
+        # remove not local entities from the collections
+
+        for c in self.classes.copy().keys() :
+            if not paths_approximately_equal(Path(self.classes[c].path),tr_unit.path) :
+                self.classes.pop(c)
+        self.class_dict = {k : self.name for k in self.classes}
+        for c in self.class_templates.copy().keys() :
+            if not paths_approximately_equal(Path(self.class_templates[c].path),tr_unit.path) :
+                self.class_templates.pop(c)
+        self.class_template_dict = {k: self.name for k in self.class_templates}
+        for i in range(len(self.typedefs)-1,-1,-1) :
+            if not paths_approximately_equal(Path(self.typedefs[i].path),tr_unit.path) :
+                self.typedefs.pop(i)
         self.typedef_dict = {t.name : self.name for t in self.typedefs}
+        for i in range(len(self.enums)-1,-1,-1) :
+            if not paths_approximately_equal(Path(self.enums[i].path),tr_unit.path) :
+                self.enums.pop(i)
+
+        self.inheritance = {k:v for k,v in get_inheritance_relations(tr_unit) if v}
         self.forwards = [ForwardInfo(el) for el in get_forward_declarations(tr_unit)]
 
         #handle freely defined methods
