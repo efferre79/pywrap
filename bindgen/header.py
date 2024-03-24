@@ -321,11 +321,13 @@ class BaseInfo(object):
     
     name : str
     comment : str
+    path : str
 
     def __init__(self,cur):
 
         self.name = cur.spelling
         self.comment = cur.brief_comment
+        self.path = str(cur.location.file)
 
 class FieldInfo(BaseInfo):
     '''Container for field parsing reults
@@ -514,6 +516,7 @@ class ClassInfo(object):
     name : str
     comment : str
     abstract : bool
+    path : str
 
     constructors : List[ConstructorInfo]
     nonpublic_constructors : List[ConstructorInfo]
@@ -555,6 +558,7 @@ class ClassInfo(object):
             self.name = cur.type.spelling
         self.comment = cur.brief_comment
         self.abstract = cur.is_abstract_record()
+        self.path = str(cur.location.file)
 
         self.constructors = self.filter_rvalues((ConstructorInfo(el) for el in get_public_constructors(cur)))
         self.nonpublic_constructors = [ConstructorInfo(el) for el in get_private_constructors(cur)]\
